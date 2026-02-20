@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeSync Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // --- ADMIN SECURITY CHECK ---
+        const userIdentifier = localStorage.getItem('vibesync_user_identifier');
+        const ADMIN_EMAILS = ['dinesh2370049@ssn.edu.in', 'bobby06102005@gmail.com'];
+
+        if (!ADMIN_EMAILS.includes(userIdentifier)) {
+            alert("⛔ Access Denied: Admins only.");
+            window.location.href = 'index.html';
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            overflow-x: hidden;
+        }
+
+        .admin-container {
+            padding-bottom: 2rem;
+        }
+
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card {
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .icon-box {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 320px;
+        }
+
+        #userChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">🎹 VibeSync Admin</a>
+            <a href="index.html" class="btn btn-outline-light btn-sm">Back to App</a>
+        </div>
+    </nav>
+
+    <div class="container admin-container">
+        <h2 class="mb-4">System Overview</h2>
+
+        <!-- Stats Row -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card stat-card bg-primary text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Total Users</h6>
+                            <h2 class="mb-0" id="total-users">-</h2>
+                        </div>
+                        <div class="icon-box bg-white text-primary">👥</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-danger text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Inactive (At Risk)</h6>
+                            <h2 class="mb-0" id="inactive-users">-</h2>
+                        </div>
+                        <div class="icon-box bg-white text-danger">⚠️</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-success text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Total Songs</h6>
+                            <h2 class="mb-0" id="total-songs">-</h2>
+                        </div>
+                        <div class="icon-box bg-white text-success">🎵</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-info text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Server Uptime</h6>
+                            <h4 class="mb-0" id="uptime">-</h4>
+                        </div>
+                        <div class="icon-box bg-white text-info">⏱️</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row g-4">
+            <div class="col-md-8">
+                <div class="card p-3">
+                    <h5 class="card-title">User Activity Distribution</h5>
+                    <div class="chart-wrapper">
+                        <canvas id="userChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 h-100">
+                    <h5 class="card-title">System Status</h5>
+                    <ul class="list-group list-group-flush mt-3">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Database Status
+                            <span class="badge bg-success rounded-pill">Connected</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Email Service
+                            <span class="badge bg-success rounded-pill">Active</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Cron Jobs
+                            <span class="badge bg-primary rounded-pill">Scheduled</span>
+                        </li>
+                        <li class="list-group-item mt-3">
+                            <small class="text-muted">Host: <span id="db-host">...</span></small>
+                        </li>
+                    </ul>
+                    <div class="mt-auto pt-3 text-center">
+                        <button class="btn btn-outline-danger w-100" id="reset-all-data-btn">Reset All Data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            // Attach event listener separately to avoid syntax errors in HTML attributes
+            document.addEventListener('DOMContentLoaded', () => {
+                const resetBtn = document.getElementById('reset-all-data-btn');
+                if (resetBtn) {
+                    resetBtn.addEventListener('click', () => {
+                        showConfirmation('WARNING: This will delete ALL users. Are you absolutely sure?', async () => {
+                            try {
+                                const response = await fetch(`${API_URL}/admin/wipe-users`, {
+                                    method: 'DELETE',
+                                    headers: { 'x-user-id': localStorage.getItem('vibesync_user_id') }
+                                });
+                                if (response.ok) {
+                                    alert('All users wiped.');
+                                    loadUsers();
+                                    fetchStats();
+                                } else {
+                                    alert('Failed to wipe users.');
+                                }
+                            } catch (e) {
+                                console.error(e);
+                                alert('Error wiping users.');
+                            }
+                        });
+                    });
+                }
+            });
+        </script>
+        <!-- Management Section -->
+        <div class="row g-4 mt-2">
+            <!-- User Management -->
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h5 class="card-title d-flex justify-content-between align-items-center">
+                        User Management
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadUsers()">Refresh</button>
+                    </h5>
+                    <div class="table-responsive" style="max-height: 300px;">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="user-table-body">
+                                <tr>
+                                    <td colspan="3" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Song Management -->
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h5 class="card-title d-flex justify-content-between align-items-center">
+                        Song Management
+                        <button class="btn btn-sm btn-success" onclick="openAddSongModal()">+ Add Song</button>
+                    </h5>
+                    <div class="table-responsive" style="max-height: 300px;">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Artist</th>
+                                    <th>Genre</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="song-table-body">
+                                <tr>
+                                    <td colspan="3" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Song Modal -->
+        <div class="modal fade" id="songModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="songModalLabel">Add/Edit Song</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="song-id">
+                        <div class="mb-3">
+                            <label class="form-label">Title</label>
+                            <input type="text" class="form-control" id="song-title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Artist</label>
+                            <input type="text" class="form-control" id="song-artist" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Genre</label>
+                            <input type="text" class="form-control" id="song-genre">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Audio URL</label>
+                            <input type="url" class="form-control" id="song-audio">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Cover Image URL</label>
+                            <input type="url" class="form-control" id="song-cover">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="saveSong()">Save Song</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Confirmation Modal -->
+        <div class="modal fade" id="confirmationModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirm Action</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="confirmationMessage">
+                        Are you sure?
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Bootstrap JS (REQUIRED FOR MODALS) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Config -->
+    <script src="config.js?v=3"></script>
+    <script>
+        async function fetchStats() {
+            try {
+                const response = await fetch(`${API_URL}/admin/dashboard`, {
+                    headers: { 'x-user-id': localStorage.getItem('vibesync_user_id') }
+                });
+                const data = await response.json();
+
+                if (data.status === 'Success') {
+                    // Update Numbers
+                    document.getElementById('total-users').innerText = data.stats.total_users;
+                    document.getElementById('inactive-users').innerText = data.stats.inactive_at_risk;
+                    document.getElementById('total-songs').innerText = data.stats.total_songs;
+                    document.getElementById('uptime').innerText = data.stats.server_uptime;
+                    document.getElementById('db-host').innerText = data.stats.database_host;
+
+                    // Update Chart
+                    renderChart(data.stats.total_users, data.stats.inactive_at_risk);
+                }
+            } catch (error) {
+                console.error("Error loading dashboard:", error);
+                alert("Failed to load dashboard stats. Is the backend running?");
+            }
+        }
+
+        // Render Chart using Chart.js
+        let myChart = null;
+        function renderChart(totalUsers, inactiveUsers) {
+            const ctx = document.getElementById('userChart').getContext('2d');
+
+            // Destroy existing chart if it exists to prevent overlap
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Active Users', 'Inactive (At Risk)'],
+                    datasets: [{
+                        data: [totalUsers - inactiveUsers, inactiveUsers],
+                        backgroundColor: ['#28a745', '#dc3545'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // Load stats on page load
+        fetchStats();
+        loadUsers();
+        loadSongs();
+
+        // --- USER MANAGEMENT ---
+        async function loadUsers() {
+            const tbody = document.getElementById('user-table-body');
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/admin/users`, {
+                    headers: { 'x-user-id': localStorage.getItem('vibesync_user_id') }
+                });
+                const users = await res.json();
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td>${u.email || u.phone || 'Guest'}</td>
+                        <td>${u.warningSent ? '<span class="badge bg-warning">Warned</span>' : '<span class="badge bg-success">Active</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u._id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="3" class="text-danger">Error: ${e.message}</td></tr>`; }
+        }
+
+        function deleteUser(id) {
+            showConfirmation('Are you sure you want to delete this user? This cannot be undone.', async () => {
+                await fetch(`${API_URL}/admin/users/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'x-user-id': localStorage.getItem('vibesync_user_id') }
+                });
+                loadUsers();
+                fetchStats();
+            });
+        }
+
+        // --- SONG MANAGEMENT ---
+        async function loadSongs() {
+            const tbody = document.getElementById('song-table-body');
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/songs`);
+                const songs = await res.json();
+                tbody.innerHTML = songs.map(s => `
+                    <tr>
+                        <td>${s.title}</td>
+                        <td>${s.artist}</td>
+                        <td><span class="badge bg-secondary">${s.genre || 'N/A'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editSong('${s._id}')">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSong('${s._id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="3" class="text-danger">Error: ${e.message}</td></tr>`; }
+        }
+
+        function deleteSong(id) {
+            showConfirmation('Delete this song from the database?', async () => {
+                await fetch(`${API_URL}/admin/songs/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'x-user-id': localStorage.getItem('vibesync_user_id') }
+                });
+                loadSongs();
+                fetchStats();
+            });
+        }
+
+        // Open Modal for Create
+        function openAddSongModal() {
+            document.getElementById('songModalLabel').innerText = "Add New Song";
+            document.getElementById('song-id').value = "";
+            document.getElementById('song-title').value = "";
+            document.getElementById('song-artist').value = "";
+            document.getElementById('song-genre').value = "";
+            document.getElementById('song-audio').value = "";
+            document.getElementById('song-cover').value = "";
+            new bootstrap.Modal(document.getElementById('songModal')).show();
+        }
+
+        // Open Modal for Edit
+        async function editSong(id) {
+            // Fetch current details to pre-fill
+            const res = await fetch(`${API_URL}/songs`); // Optimally should fetch single song, but filtering list is ok for small app
+            const songs = await res.json();
+            const song = songs.find(s => s._id === id);
+
+            if (song) {
+                document.getElementById('songModalLabel').innerText = "Edit Song";
+                document.getElementById('song-id').value = song._id;
+                document.getElementById('song-title').value = song.title;
+                document.getElementById('song-artist').value = song.artist;
+                document.getElementById('song-genre').value = song.genre || "";
+                document.getElementById('song-audio').value = song.audioUrl || "";
+                document.getElementById('song-cover').value = song.coverImage || "";
+                new bootstrap.Modal(document.getElementById('songModal')).show();
+            }
+        }
+
+        // Save (Create or Update)
+        async function saveSong() {
+            const id = document.getElementById('song-id').value;
+            const title = document.getElementById('song-title').value;
+            const artist = document.getElementById('song-artist').value;
+            const genre = document.getElementById('song-genre').value;
+            const audioUrl = document.getElementById('song-audio').value;
+            const coverImage = document.getElementById('song-cover').value;
+
+            if (!title || !artist) return alert("Title and Artist are required");
+
+            const payload = { title, artist, genre, audioUrl, coverImage };
+            const headers = {
+                'Content-Type': 'application/json',
+                'x-user-id': localStorage.getItem('vibesync_user_id')
+            };
+
+            if (id) {
+                // Update
+                await fetch(`${API_URL}/admin/songs/${id}`, { method: 'PUT', headers, body: JSON.stringify(payload) });
+            } else {
+                // Create
+                await fetch(`${API_URL}/admin/songs`, { method: 'POST', headers, body: JSON.stringify(payload) });
+            }
+
+            const modalEl = document.getElementById('songModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl); // Safer than getInstance
+            modal.hide();
+            loadSongs();
+            fetchStats();
+        }
+
+        // --- CONFIRMATION LOGIC ---
+        let pendingAction = null;
+
+        function showConfirmation(message, action) {
+            document.getElementById('confirmationMessage').innerText = message;
+            pendingAction = action;
+            new bootstrap.Modal(document.getElementById('confirmationModal')).show();
+        }
+
+        document.getElementById('confirmActionBtn').addEventListener('click', () => {
+            if (pendingAction) pendingAction();
+            const modalEl = document.getElementById('confirmationModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            modal.hide();
+        });
+    </script>
+</body>
+
+</html>

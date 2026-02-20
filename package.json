@@ -1,0 +1,14 @@
+{
+    "name": "vibesync-root",
+    "version": "1.0.0",
+    "description": "Root package for Vibesync project",
+    "scripts": {
+        "start:backend": "cd backend && node server.js",
+        "start:frontend": "cd frontend && npx http-server -p 3000",
+        "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2",
+        "http-server": "^14.1.1"
+    }
+}
